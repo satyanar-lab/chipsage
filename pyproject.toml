@@ -20,6 +20,7 @@ classifiers = [
 ]
 dependencies = [
     "cmsis-svd>=0.6",
+    "mcp>=1.2",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +31,7 @@ dev = [
 
 [project.scripts]
 chipsage-build = "chipsage.build_index:main"
+chipsage-mcp = "chipsage.server:main"
 
 [project.urls]
 Homepage = "https://github.com/satyanar-lab/chipsage"
