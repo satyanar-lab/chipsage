@@ -1,0 +1,30 @@
+# Virtualenvs
+.venv/
+venv/
+
+# Python caches / build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Built indexes (Phase 5 ships a packaged pre-built index; until then these are artefacts)
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage
+.coverage
+htmlcov/
+
+# Claude Code local (personal) settings — shared agents/ stay tracked
+.claude/settings.local.json
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

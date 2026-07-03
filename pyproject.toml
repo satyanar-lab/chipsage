@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chipsage"
+version = "0.1.0"
+description = "Local MCP server giving AI coding tools hallucination-free, citation-backed access to microcontroller documentation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "chipsage contributors" }]
+keywords = ["mcp", "svd", "cmsis", "microcontroller", "rp2040", "rp2350", "embedded", "registers"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Embedded Systems",
+]
+dependencies = [
+    "cmsis-svd>=0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+chipsage-build = "chipsage.build_index:main"
+
+[project.urls]
+Homepage = "https://github.com/satyanar-lab/chipsage"
+Repository = "https://github.com/satyanar-lab/chipsage"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chipsage"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
