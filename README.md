@@ -88,24 +88,61 @@ citation-backed tools. Every response includes a `provenance` block and a `citat
 
 `value` and `address` accept hex (`0x...`) or decimal.
 
-### Connect it to an MCP client
+## Install as MCP server
 
-Build the index once, then register the server. Example client config (Claude Desktop /
-Claude Code `mcpServers`):
+Build an index at a **stable absolute location** first. MCP clients launch the server from an
+arbitrary working directory, so a bare `chipsage.db` (resolved against the client's cwd) will
+not be found — always pass an absolute `--db`, and an absolute path to the `chipsage-mcp`
+binary.
+
+```bash
+.venv/bin/chipsage-build --svd data/svd/RP2040.svd data/svd/RP2350.svd -o "$PWD/chipsage.db" --strict
+```
+
+**Claude Code** — one command (substitute your checkout path for `/ABS/chipsage`; run `pwd`
+in the repo to get it):
+
+```bash
+claude mcp add chipsage -- \
+  /ABS/chipsage/.venv/bin/chipsage-mcp --db /ABS/chipsage/chipsage.db
+```
+
+The `--` separates chipsage's flags from `claude`'s own. Add `--scope user` before the name
+to make it available in every project. Verify with `claude mcp get chipsage` — it should
+report `✔ Connected`.
+
+**Claude Desktop** — add to `claude_desktop_config.json` (macOS
+`~/Library/Application Support/Claude/`, Windows `%APPDATA%\Claude\`), then restart the app:
 
 ```json
 {
   "mcpServers": {
     "chipsage": {
-      "command": "/abs/path/.venv/bin/chipsage-mcp",
-      "args": ["--db", "/abs/path/chipsage.db"]
+      "command": "/ABS/chipsage/.venv/bin/chipsage-mcp",
+      "args": ["--db", "/ABS/chipsage/chipsage.db"]
     }
   }
 }
 ```
 
-The server opens the index **read-only** and makes **no network calls** — a tool can only
-read the prebuilt SQLite file.
+### How the server finds the index
+
+In priority order: the `--db PATH` flag → the `CHIPSAGE_DB` environment variable → a default
+of `chipsage.db` **relative to the current directory**. Because MCP clients start the server
+from an unpredictable cwd, the cwd-relative default is unreliable for real installs — **bake
+an absolute `--db` into the command above.** If the index is missing, the server exits
+immediately with `index not found: <path>`. It opens the index **read-only** and makes **no
+network calls** — a tool can only read the prebuilt SQLite file.
+
+### Try it
+
+Once connected, ask in natural language — chipsage answers with a source citation:
+
+```
+You:      What is the reset value of the RP2040 SYSINFO CHIP_ID register?
+chipsage: CHIP_ID @ 0x40000000 resets to 0x20002927 (32-bit, read-write)
+          — cited: Raspberry Pi RP2040 · SVD v0.1 · RP2040.svd
+```
 
 ## Layout
 
