@@ -59,8 +59,9 @@ index.
 
 These notes do not override the Constitution; they record how we work in this repo.
 
-**Current status:** Phase 1 complete (repo scaffold, loader, validators, tests). Phase 2
-not started. Do not begin the next phase without explicit review/approval.
+**Current status:** Phases 1–2 complete (Tier-1 loader + validators; MCP stdio server with
+lookup_register / decode_dump / check_write). Phase 3 not started. Do not begin the next
+phase without explicit review/approval.
 
 **Environment**
 - Python 3.10+; virtualenv lives at `.venv/` (git-ignored).
@@ -73,17 +74,29 @@ not started. Do not begin the next phase without explicit review/approval.
   - `svd.py` — the ONLY module that imports `cmsis_svd`; adapts SVD → domain model.
   - `validation.py` — pure Tier-1 validators + `Violation`. No I/O.
   - `schema.py` — SQLite DDL + `SCHEMA_VERSION`.
-  - `db.py` — connection helpers (foreign keys on, `Row` factory).
+  - `db.py` — connection helpers: `connect` (read-write, foreign keys on) and `connect_ro`
+    (read-only, used by the server).
   - `loader.py` — validates the domain model and inserts valid rows; returns a
     `LoadReport`. Rejects-and-logs; never repairs.
   - `build_index.py` — `chipsage-build` CLI that builds the SQLite index from SVDs.
+  - `bits.py` — pure bit math (decode fields, analyse writes). No DB, no MCP; fully tested.
+  - `query.py` — citation-backed query layer over the index; returns JSON-ready dicts with
+    provenance. The deterministic core the server wraps.
+  - `server.py` — `chipsage-mcp` FastMCP stdio server exposing the three Tier-1 tools,
+    read-only. Tools annotate `-> dict[str, Any]` so FastMCP emits structuredContent
+    (a bare `-> dict` return is rejected for structured output).
 - `data/svd/` — vendored ground-truth SVDs + `SOURCES.md` (URLs, licence, sha256).
-- `tests/` — `test_validation.py` (pure validators) + `test_loader.py` (real SVDs +
-  synthetic violations).
+- `tests/` — `test_validation.py` + `test_bits.py` (pure), `test_loader.py` + `test_query.py`
+  (real SVDs / index), and `test_server.py` (MCP tool registration + round-trip).
 
 **Build the index**
 - `.venv/bin/chipsage-build --svd data/svd/RP2040.svd data/svd/RP2350.svd -o chipsage.db`
 - Built `*.db` files are git-ignored until Phase 5 ships a packaged pre-built index.
+
+**Run the MCP server**
+- `.venv/bin/chipsage-mcp --db chipsage.db` — stdio transport, opens the index read-only,
+  no network. A client can also point at it via the `CHIPSAGE_DB` env var. See the README
+  for an `mcpServers` config snippet.
 
 **Quality gates before any commit** (all must pass):
 - `.venv/bin/ruff check .`
