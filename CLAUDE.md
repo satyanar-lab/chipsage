@@ -103,6 +103,16 @@ phase without explicit review/approval.
 - `.venv/bin/pytest`
 - No network calls at tool runtime (loading reads local files only).
 
+**Docs are part of every phase — not an afterthought.** Before a phase is presented for
+review, its work MUST already be reflected in the user-facing docs:
+- the README **phase table** marks the phase ✅ (and the status line is current);
+- the README has the sections a user needs for that phase (install/usage/examples), with
+  any commands **verified by running them exactly as written** (for MCP install, from a
+  directory outside the repo, since clients launch from an arbitrary cwd);
+- the CLAUDE.md status line is updated.
+A phase whose README still shows it as "planned", or lacks its user-facing section, is not
+done — do not present it for review.
+
 **Commits & pushes: ALWAYS delegate to the `git-clerk` subagent.** It is the only actor
 that commits/pushes and it writes Conventional Commit messages. Do not run `git commit`
 yourself. Never push unless the user explicitly asks.
