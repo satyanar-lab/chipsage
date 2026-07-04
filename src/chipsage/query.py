@@ -12,6 +12,7 @@ returned as ``0x``-prefixed strings; bit positions and widths are returned as in
 from __future__ import annotations
 
 import difflib
+import re
 import sqlite3
 
 from .bits import (
@@ -338,4 +339,151 @@ def check_write(
         "fields": fields,
         "provenance": prov,
         "citation": prov["citation"],
+    }
+
+
+# --- Tier-3 documentation tools ------------------------------------------------------------
+#
+# These read the datasheet prose (FTS5) and errata tables. Per Tier-3 law they return only
+# verbatim, page-anchored excerpts — never paraphrase — and every result carries a page
+# citation. The index is opened read-only; no network access.
+
+
+def _doc_cite_name(title: str | None, source: str) -> str:
+    """A concise document name for citations: 'RP2040 Datasheet' from the full PDF title."""
+    if title:
+        return title.split(":")[0].strip() or source
+    return source
+
+
+def _fts_query(text: str) -> str:
+    """Turn a free-text query into a safe FTS5 MATCH expression (AND of quoted terms)."""
+    terms = re.findall(r"[A-Za-z0-9_]+", text)
+    if not terms:
+        raise ChipsageQueryError(f"empty search query {text!r}; provide at least one word")
+    return " ".join(f'"{t}"' for t in terms)
+
+
+def search_datasheet(
+    conn: sqlite3.Connection, query: str, chip: str | None = None, limit: int = 5
+) -> dict:
+    """Full-text search the datasheet prose; return verbatim, page-anchored excerpts."""
+    match = _fts_query(query)
+    limit = max(1, min(int(limit), 25))
+
+    sql = (
+        "SELECT p.chip, p.page, p.pdf_page, p.document_id, "
+        "snippet(prose, 0, '«', '»', ' … ', 18) AS excerpt "
+        "FROM prose p WHERE prose MATCH ?"
+    )
+    params: list[object] = [match]
+    chip_name = None
+    if chip:
+        chip_name = resolve_chip_row(conn, chip)["name"]  # validates + canonicalises
+        sql += " AND p.chip = ?"
+        params.append(chip_name)
+    sql += " ORDER BY rank LIMIT ?"
+    params.append(limit)
+
+    rows = conn.execute(sql, params).fetchall()
+    results = []
+    for r in rows:
+        doc = conn.execute(
+            "SELECT title, source FROM documents WHERE id = ?", (r["document_id"],)
+        ).fetchone()
+        results.append(
+            {
+                "chip": r["chip"],
+                "page": r["page"],
+                "pdf_page": r["pdf_page"],
+                "excerpt": " ".join(r["excerpt"].split()),
+                "document": doc["source"],
+                "citation": f"{_doc_cite_name(doc['title'], doc['source'])} · p.{r['page']}",
+            }
+        )
+    return {
+        "query": query,
+        "chip": chip_name,
+        "count": len(results),
+        "results": results,
+        "note": (
+            "excerpts are verbatim datasheet page text (matches wrapped in «…»); "
+            "cite the page number, do not paraphrase"
+        ),
+    }
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
+
+
+def _peripheral_matches(query: str, heading: str | None) -> bool:
+    """Does a peripheral query match a datasheet block heading?
+
+    Token-level match with either-direction prefixing, so an SVD peripheral name resolves to
+    the datasheet's own block grouping: ``USBCTRL_REGS`` → "USB", ``ADC`` → "GPIO / ADC",
+    ``CLOCKS`` → "Clocks". Nothing is invented — the stored heading is the datasheet's wording.
+    """
+    q_tokens, h_tokens = _tokens(query), _tokens(heading)
+    return any(
+        qt == ht or qt.startswith(ht) or ht.startswith(qt)
+        for qt in q_tokens
+        for ht in h_tokens
+    )
+
+
+def get_errata(conn: sqlite3.Connection, chip: str, peripheral: str | None = None) -> dict:
+    """Return a chip's errata (optionally filtered to a peripheral), with page citations."""
+    chip_name = resolve_chip_row(conn, chip)["name"]
+    rows = conn.execute(
+        "SELECT e.code, e.title, e.peripheral, e.page, e.pdf_page, e.text, "
+        "d.title AS doc_title, d.source "
+        "FROM errata e JOIN documents d ON d.id = e.document_id "
+        "WHERE e.chip = ? ORDER BY e.pdf_page, e.id",
+        (chip_name,),
+    ).fetchall()
+
+    blocks = sorted({r["peripheral"] for r in rows if r["peripheral"]})
+    if not rows:
+        return {
+            "chip": chip_name,
+            "peripheral": peripheral,
+            "count": 0,
+            "errata_blocks": [],
+            "errata": [],
+            "note": f"no errata are indexed for {chip_name}",
+        }
+
+    selected = rows
+    if peripheral:
+        selected = [r for r in rows if _peripheral_matches(peripheral, r["peripheral"])]
+        if not selected:
+            raise ChipsageQueryError(
+                f"no {chip_name} errata are grouped under a block matching {peripheral!r}; "
+                f"errata blocks: {blocks}"
+            )
+
+    errata = [
+        {
+            "code": r["code"],
+            "title": r["title"],
+            "peripheral": r["peripheral"],
+            "page": r["page"],
+            "text": r["text"],
+            "citation": (
+                f"{_doc_cite_name(r['doc_title'], r['source'])} · {r['code']} · p.{r['page']}"
+            ),
+        }
+        for r in selected
+    ]
+    return {
+        "chip": chip_name,
+        "peripheral": peripheral,
+        "count": len(errata),
+        "errata_blocks": blocks,
+        "errata": errata,
+        "note": (
+            "errata are grouped by the datasheet's own hardware-block sections; "
+            "text is verbatim, cite the code and page"
+        ),
     }

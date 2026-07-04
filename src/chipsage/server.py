@@ -1,9 +1,10 @@
-"""chipsage MCP server (stdio transport) — Tier-1 register tools.
+"""chipsage MCP server (stdio transport) — Tier-1 register + Tier-3 documentation tools.
 
-Exposes three deterministic, citation-backed tools over stdio: ``lookup_register``,
-``decode_dump`` and ``check_write``. The server is strictly read-only — it opens a prebuilt
-SQLite index in ``mode=ro`` and makes no network calls — so nothing a tool does can mutate
-the index or reach outside the machine.
+Exposes five deterministic, citation-backed tools over stdio: ``lookup_register``,
+``decode_dump``, ``check_write`` (Tier-1, SVD-backed), plus ``search_datasheet`` and
+``get_errata`` (Tier-3, datasheet-backed, page-anchored). The server is strictly read-only —
+it opens a prebuilt SQLite index in ``mode=ro`` and makes no network calls — so nothing a
+tool does can mutate the index or reach outside the machine.
 
 Point it at an index with ``--db PATH`` or the ``CHIPSAGE_DB`` environment variable
 (default ``chipsage.db``). Build one first with ``chipsage-build``.
@@ -19,6 +20,8 @@ from mcp.server.fastmcp import FastMCP
 
 from . import query
 from .db import connect_ro
+from .query import get_errata as _get_errata
+from .query import search_datasheet as _search_datasheet
 
 mcp = FastMCP("chipsage")
 
@@ -109,6 +112,29 @@ def check_write(
         register=register,
         address=_parse_int(address, "address") if address is not None else None,
     )
+
+
+@mcp.tool()
+def search_datasheet(query: str, chip: str | None = None, limit: int = 5) -> dict[str, Any]:
+    """Full-text search the vendored datasheet prose and return page-anchored excerpts.
+
+    Tier-3: excerpts are verbatim datasheet text (never paraphrased), each with its page
+    number for citation. Optionally restrict to one ``chip`` (e.g. "RP2040"); ``limit`` caps
+    the number of hits. Example: query="XIP cache flush", chip="RP2040".
+    """
+    return _run(_search_datasheet, query=query, chip=chip, limit=limit)
+
+
+@mcp.tool()
+def get_errata(chip: str, peripheral: str | None = None) -> dict[str, Any]:
+    """List a chip's silicon errata, joined to the datasheet's hardware-block grouping.
+
+    Give a ``peripheral`` (e.g. "Clocks", "USB", "DMA", or an SVD peripheral name like
+    "ADC") to surface only the errata grouped under that block; omit it for all errata.
+    Each entry carries the erratum code, verbatim description/workaround, and a page
+    citation. Example: chip="RP2040", peripheral="USB".
+    """
+    return _run(_get_errata, chip=chip, peripheral=peripheral)
 
 
 def main(argv: list[str] | None = None) -> int:
