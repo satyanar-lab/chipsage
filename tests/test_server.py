@@ -62,3 +62,9 @@ def test_main_errors_when_index_missing(monkeypatch: pytest.MonkeyPatch, tmp_pat
     monkeypatch.delenv("CHIPSAGE_DB", raising=False)
     with pytest.raises(SystemExit):
         server.main(["--db", str(tmp_path / "does-not-exist.db")])
+
+
+def test_decode_tool_resolves_enum(dbenv: None) -> None:
+    d = server.decode_dump("RP2040", "0x2", peripheral="CLOCKS", register="CLK_REF_CTRL")
+    src = next(f for f in d["fields"] if f["name"] == "SRC")
+    assert src["enum"] == "xosc_clksrc"

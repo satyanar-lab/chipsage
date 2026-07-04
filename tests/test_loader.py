@@ -11,7 +11,7 @@ import pytest
 
 from chipsage.build_index import main as build_main
 from chipsage.loader import build_database, insert_chip, load_svd
-from chipsage.models import AddressBlock, Chip, Field, Peripheral, Register
+from chipsage.models import AddressBlock, Chip, EnumeratedValue, Field, Peripheral, Register
 from chipsage.schema import SCHEMA_VERSION
 
 # Ground-truth facts read directly from the pinned SVD files (see data/svd/SOURCES.md).
@@ -241,3 +241,62 @@ def test_insert_rejects_and_logs_violations(
 
     kept_fields = {row["name"] for row in db.execute("SELECT name FROM fields").fetchall()}
     assert kept_fields == {"EN", "OK"}  # TOOBIG dropped, its register's OK field survives
+
+
+# --- enumerated values --------------------------------------------------------------------
+
+
+def test_enums_loaded_for_real_svd(db: sqlite3.Connection, rp2040_path: Path) -> None:
+    report = load_svd(rp2040_path, db)
+    assert report.enums_inserted > 2000
+    assert report.enums_rejected == 0
+    rows = db.execute(
+        "SELECT e.value, e.name FROM enums e "
+        "JOIN fields f ON f.id = e.field_id "
+        "JOIN registers r ON r.id = f.register_id "
+        "JOIN peripherals p ON p.id = r.peripheral_id "
+        "WHERE p.name = 'CLOCKS' AND r.name = 'CLK_REF_CTRL' AND f.name = 'SRC' "
+        "ORDER BY e.value"
+    ).fetchall()
+    assert [(x["value"], x["name"]) for x in rows] == [
+        (0, "rosc_clksrc_ph"),
+        (1, "clksrc_clk_ref_aux"),
+        (2, "xosc_clksrc"),
+    ]
+
+
+def test_insert_rejects_oversized_enum(db: sqlite3.Connection) -> None:
+    chip = Chip(
+        vendor="Test",
+        name="ENUMMCU",
+        peripherals=(
+            Peripheral(
+                name="P1",
+                base_address=0x4000_0000,
+                address_blocks=(AddressBlock(0, 0x100),),
+                registers=(
+                    Register(
+                        "R",
+                        0x00,
+                        32,
+                        fields=(
+                            Field(
+                                "MODE",
+                                0,
+                                2,  # 2-bit field, max value 3
+                                enumerated_values=(
+                                    EnumeratedValue("ok", 3),
+                                    EnumeratedValue("bad", 8),  # does not fit 2 bits
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    report = insert_chip(db, chip)
+    assert report.enums_inserted == 1
+    assert report.enums_rejected == 1
+    assert any(v.rule == "enum_out_of_range" for v in report.violations)
+    assert {r["name"] for r in db.execute("SELECT name FROM enums").fetchall()} == {"ok"}

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from chipsage.models import AddressBlock, Field, Peripheral, Register
+from chipsage.models import AddressBlock, EnumeratedValue, Field, Peripheral, Register
 from chipsage.validation import (
+    SCOPE_ENUM,
     SCOPE_FIELD,
     SCOPE_REGISTER,
     find_overlapping_fields,
     reset_value_fits,
+    validate_enum,
     validate_field,
     validate_register,
 )
@@ -152,3 +154,28 @@ def test_register_with_no_address_blocks_skips_range_check() -> None:
     reg = Register("R", 0xFFFF, 32)
     peripheral = Peripheral(name="P", base_address=0, address_blocks=(), registers=(reg,))
     assert validate_register(reg, peripheral) == []
+
+
+# --- validate_enum ------------------------------------------------------------------------
+
+
+def test_enum_value_within_field_width_ok() -> None:
+    fld = Field("MODE", 0, 2)  # 2-bit field, max value 3
+    reg = Register("R", 0x00, 32, fields=(fld,))
+    assert validate_enum(EnumeratedValue("full", 3), fld, _peripheral(reg), reg) == []
+
+
+def test_enum_value_too_wide_rejected() -> None:
+    fld = Field("MODE", 0, 2)
+    reg = Register("R", 0x00, 32, fields=(fld,))
+    violations = validate_enum(EnumeratedValue("bad", 4), fld, _peripheral(reg), reg)
+    assert [v.rule for v in violations] == ["enum_out_of_range"]
+    assert violations[0].scope == SCOPE_ENUM
+    assert violations[0].field == "MODE"
+
+
+def test_enum_default_entry_exempt() -> None:
+    fld = Field("MODE", 0, 2)
+    reg = Register("R", 0x00, 32, fields=(fld,))
+    default = EnumeratedValue("other", None, is_default=True)
+    assert validate_enum(default, fld, _peripheral(reg), reg) == []

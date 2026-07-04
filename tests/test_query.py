@@ -132,3 +132,28 @@ def test_rp2350_register_and_provenance(qconn: sqlite3.Connection) -> None:
     r = lookup_register(qconn, "RP2350", "SIO", "GPIO_OUT")
     assert r["provenance"]["svd_source"] == "RP2350.svd"
     assert r["fields"][0]["bits"] == "[31:0]"  # RP2350 widened the low GPIO bank
+
+
+# --- enumerated values --------------------------------------------------------------------
+
+
+def test_lookup_includes_enumerated_values(qconn: sqlite3.Connection) -> None:
+    r = lookup_register(qconn, "RP2040", "CLOCKS", "CLK_REF_CTRL")
+    src = next(f for f in r["fields"] if f["name"] == "SRC")
+    pairs = {(e["value"], e["name"]) for e in src["enumerated_values"]}
+    assert (2, "xosc_clksrc") in pairs
+    assert (0, "rosc_clksrc_ph") in pairs
+
+
+def test_decode_resolves_symbolic_enum_name(qconn: sqlite3.Connection) -> None:
+    # CLK_REF_CTRL.SRC occupies bits [1:0]; value 0x2 selects SRC=2.
+    r = decode_dump(qconn, "RP2040", 0x2, peripheral="CLOCKS", register="CLK_REF_CTRL")
+    src = next(f for f in r["fields"] if f["name"] == "SRC")
+    assert src["value_int"] == 2
+    assert src["enum"] == "xosc_clksrc"
+
+
+def test_decode_enum_is_none_when_field_has_no_enums(qconn: sqlite3.Connection) -> None:
+    r = decode_dump(qconn, "RP2040", 0x5, peripheral="SIO", register="GPIO_OUT")
+    assert r["fields"][0]["name"] == "GPIO_OUT"
+    assert r["fields"][0]["enum"] is None
