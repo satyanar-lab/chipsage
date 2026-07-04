@@ -59,9 +59,10 @@ index.
 
 These notes do not override the Constitution; they record how we work in this repo.
 
-**Current status:** Phases 1–2 complete (Tier-1 loader + validators; MCP stdio server with
-lookup_register / decode_dump / check_write). Phase 3 not started. Do not begin the next
-phase without explicit review/approval.
+**Current status:** Phases 1–2.5 complete (Tier-1 loader + validators; MCP stdio server with
+lookup_register / decode_dump / check_write; SVD enumerated values in the index, surfaced by
+decode_dump + lookup_register; `SCHEMA_VERSION` = 2). Phase 3 not started. Do not begin the
+next phase without explicit review/approval.
 
 **Environment**
 - Python 3.10+; virtualenv lives at `.venv/` (git-ignored).
@@ -69,11 +70,11 @@ phase without explicit review/approval.
 
 **Layout**
 - `src/chipsage/` — package (src layout). Vendor-agnostic; vendors are data, not code.
-  - `models.py` — frozen domain dataclasses (Chip/Peripheral/Register/Field), decoupled
-    from cmsis-svd so the rest of the code never imports the parser.
+  - `models.py` — frozen domain dataclasses (Chip/Peripheral/Register/Field/EnumeratedValue),
+    decoupled from cmsis-svd so the rest of the code never imports the parser.
   - `svd.py` — the ONLY module that imports `cmsis_svd`; adapts SVD → domain model.
-  - `validation.py` — pure Tier-1 validators + `Violation`. No I/O.
-  - `schema.py` — SQLite DDL + `SCHEMA_VERSION`.
+  - `validation.py` — pure Tier-1 validators + `Violation` (register/field/enum scopes). No I/O.
+  - `schema.py` — SQLite DDL + `SCHEMA_VERSION` (v2 adds the `enums` table).
   - `db.py` — connection helpers: `connect` (read-write, foreign keys on) and `connect_ro`
     (read-only, used by the server).
   - `loader.py` — validates the domain model and inserts valid rows; returns a

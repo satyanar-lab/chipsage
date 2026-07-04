@@ -19,12 +19,13 @@ model-generated.
 
 ## Status
 
-Built in phases. **Phases 1–2 are complete; later phases are not yet started.**
+Built in phases. **Phases 1–2.5 are complete; later phases are not yet started.**
 
 | Phase | Scope | State |
 |------:|-------|-------|
 | **1** | Repo scaffold, `pyproject`, SVD→SQLite loader + ingest validation, proven against RP2040 & RP2350 | ✅ done |
 | **2** | MCP server (stdio) + `lookup_register`, `decode_dump`, `check_write` | ✅ done |
+| **2.5** | SVD enumerated values in the index, surfaced by `decode_dump` + `lookup_register` | ✅ done |
 | 3 | FTS5 prose/errata indexer + `get_errata` join | ⬜ planned |
 | 4 | Camelot Tier-2 electrical/timing tables + provenance gate | ⬜ planned |
 | 5 | Eval harness, CI badge, demo, packaged release with pre-built index | ⬜ planned |
@@ -82,8 +83,8 @@ citation-backed tools. Every response includes a `provenance` block and a `citat
 
 | Tool | What it does |
 |------|--------------|
-| `lookup_register` | Address, size, access, reset value/mask and the full field map for a register (by `chip` + `peripheral` + `register`, case-insensitive). |
-| `decode_dump` | Decodes a raw register `value` into its named fields; identify the register by name or by absolute `address` (e.g. from a debugger dump). Flags any reserved bits that are set. |
+| `lookup_register` | Address, size, access, reset value/mask and the full field map for a register (by `chip` + `peripheral` + `register`, case-insensitive), including each field's **enumerated values** (symbolic name ↔ number). |
+| `decode_dump` | Decodes a raw register `value` into its named fields — each with its numeric value **and symbolic enum name** where the SVD defines one (e.g. `SRC=2 (xosc_clksrc)`). Identify the register by name or by absolute `address` (e.g. from a debugger dump). Flags any reserved bits that are set. |
 | `check_write` | Checks whether writing `value` is valid: values wider than the register (error), reserved/undefined bits (warning) and non-zero writes into read-only fields (warning). Returns `ok` plus an issue list. |
 
 `value` and `address` accept hex (`0x...`) or decimal.
@@ -142,6 +143,10 @@ Once connected, ask in natural language — chipsage answers with a source citat
 You:      What is the reset value of the RP2040 SYSINFO CHIP_ID register?
 chipsage: CHIP_ID @ 0x40000000 resets to 0x20002927 (32-bit, read-write)
           — cited: Raspberry Pi RP2040 · SVD v0.1 · RP2040.svd
+
+You:      Decode RP2040 CLOCKS CLK_REF_CTRL = 0x2
+chipsage: SRC = 2 (xosc_clksrc), AUXSRC = 0 (clksrc_pll_usb)
+          — cited: Raspberry Pi RP2040 · SVD v0.1 · RP2040.svd
 ```
 
 ## Layout
@@ -164,9 +169,9 @@ tests/            pure (validators, bits) + DB-backed (loader, query) + MCP serv
 
 ## Scope & limitations
 
-- **Registers only.** The tools cover Tier-1 registers. No electrical/timing tables, prose,
-  or errata yet (Tiers 2–3 are later phases). `decode_dump` reports numeric field values; it
-  does not yet resolve SVD *enumerated values* to their symbolic names (a later enhancement).
+- **Registers only.** The tools cover Tier-1 registers, including SVD *enumerated values*
+  (symbolic field-value names). No electrical/timing tables, prose, or errata yet (Tiers 2–3
+  are later phases).
 - **Two chips.** Only RP2040 and RP2350 are indexed. STM32 (H753, L152) and ESP32 follow,
   per the vendor order in the Constitution.
 - **Only as good as the SVD.** Tier-1 accuracy is exactly the accuracy of the vendor SVD.
