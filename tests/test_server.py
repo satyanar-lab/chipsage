@@ -16,6 +16,11 @@ def dbenv(monkeypatch: pytest.MonkeyPatch, built_db_path: Path) -> None:
     monkeypatch.setenv("CHIPSAGE_DB", str(built_db_path))
 
 
+@pytest.fixture
+def docs_dbenv(monkeypatch: pytest.MonkeyPatch, docs_db_path: Path) -> None:
+    monkeypatch.setenv("CHIPSAGE_DB", str(docs_db_path))
+
+
 def _text(result: object) -> str:
     """Extract the text payload from a FastMCP call_tool result (list or (content, _) tuple)."""
     content = result[0] if isinstance(result, tuple) else result
@@ -40,9 +45,15 @@ def test_hex_and_decimal_values_parse(dbenv: None) -> None:
     assert hexed["reserved_bits_set"] == decimal["reserved_bits_set"] == "0x00000010"
 
 
-def test_three_tools_are_registered() -> None:
+def test_five_tools_are_registered() -> None:
     tools = anyio.run(server.mcp.list_tools)
-    assert {t.name for t in tools} == {"lookup_register", "decode_dump", "check_write"}
+    assert {t.name for t in tools} == {
+        "lookup_register",
+        "decode_dump",
+        "check_write",
+        "search_datasheet",
+        "get_errata",
+    }
     lookup = next(t for t in tools if t.name == "lookup_register")
     assert {"chip", "peripheral", "register"} <= set(lookup.inputSchema["properties"])
 
@@ -68,3 +79,24 @@ def test_decode_tool_resolves_enum(dbenv: None) -> None:
     d = server.decode_dump("RP2040", "0x2", peripheral="CLOCKS", register="CLK_REF_CTRL")
     src = next(f for f in d["fields"] if f["name"] == "SRC")
     assert src["enum"] == "xosc_clksrc"
+
+
+def test_search_and_errata_tools_run(docs_dbenv: None) -> None:
+    s = server.search_datasheet("XIP cache flush", chip="RP2040", limit=2)
+    assert s["count"] >= 1
+    assert "p." in s["results"][0]["citation"]
+
+    e = server.get_errata("RP2040", "USB")
+    assert e["count"] == 6
+    assert all(x["code"].startswith("RP2040-E") for x in e["errata"])
+
+
+def test_search_tool_call_roundtrip(docs_dbenv: None) -> None:
+    result = anyio.run(
+        server.mcp.call_tool,
+        "get_errata",
+        {"chip": "RP2040", "peripheral": "Clocks"},
+    )
+    payload = json.loads(_text(result))
+    assert payload["count"] == 2
+    assert {e["code"] for e in payload["errata"]} == {"RP2040-E7", "RP2040-E10"}

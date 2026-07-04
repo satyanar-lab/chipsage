@@ -10,7 +10,9 @@ from chipsage.query import (
     ChipsageQueryError,
     check_write,
     decode_dump,
+    get_errata,
     lookup_register,
+    search_datasheet,
 )
 
 # --- lookup_register ----------------------------------------------------------------------
@@ -157,3 +159,74 @@ def test_decode_enum_is_none_when_field_has_no_enums(qconn: sqlite3.Connection) 
     r = decode_dump(qconn, "RP2040", 0x5, peripheral="SIO", register="GPIO_OUT")
     assert r["fields"][0]["name"] == "GPIO_OUT"
     assert r["fields"][0]["enum"] is None
+
+
+# --- Tier-3: search_datasheet -------------------------------------------------------------
+
+
+def test_search_datasheet_returns_page_anchored_excerpts(docs_qconn: sqlite3.Connection) -> None:
+    r = search_datasheet(docs_qconn, "XIP cache flush", chip="RP2040", limit=3)
+    assert r["chip"] == "RP2040"
+    assert 1 <= r["count"] <= 3
+    hit = r["results"][0]
+    assert hit["chip"] == "RP2040"
+    assert hit["page"]  # a printed page label for citation
+    assert "p." in hit["citation"]
+    assert "«" in hit["excerpt"]  # verbatim match markers, not a paraphrase
+
+
+def test_search_datasheet_respects_limit(docs_qconn: sqlite3.Connection) -> None:
+    r = search_datasheet(docs_qconn, "register", chip="RP2040", limit=2)
+    assert r["count"] <= 2
+
+
+def test_search_datasheet_unknown_chip_raises(docs_qconn: sqlite3.Connection) -> None:
+    with pytest.raises(ChipsageQueryError):
+        search_datasheet(docs_qconn, "clock", chip="RP9999")
+
+
+def test_search_datasheet_rejects_empty_query(docs_qconn: sqlite3.Connection) -> None:
+    with pytest.raises(ChipsageQueryError):
+        search_datasheet(docs_qconn, "!!! ---", chip="RP2040")
+
+
+# --- Tier-3: get_errata (peripheral-joined) -----------------------------------------------
+
+
+def test_get_errata_all_for_chip(docs_qconn: sqlite3.Connection) -> None:
+    r = get_errata(docs_qconn, "RP2040")
+    assert r["count"] == 16
+    assert {"Clocks", "USB", "DMA", "Watchdog"} <= set(r["errata_blocks"])
+
+
+def test_get_errata_joins_peripheral_to_block(docs_qconn: sqlite3.Connection) -> None:
+    r = get_errata(docs_qconn, "RP2040", "USB")
+    assert {e["code"] for e in r["errata"]} == {
+        "RP2040-E2",
+        "RP2040-E3",
+        "RP2040-E4",
+        "RP2040-E5",
+        "RP2040-E15",
+        "RP2040-E16",
+    }
+    assert all("p." in e["citation"] and e["code"] in e["citation"] for e in r["errata"])
+
+
+def test_get_errata_svd_peripheral_name_resolves_to_block(
+    docs_qconn: sqlite3.Connection,
+) -> None:
+    # SVD peripheral names resolve to the datasheet's own block grouping
+    assert get_errata(docs_qconn, "RP2040", "ADC")["errata"][0]["peripheral"] == "GPIO / ADC"
+    assert get_errata(docs_qconn, "RP2040", "CLOCKS")["count"] == 2
+
+
+def test_get_errata_unknown_peripheral_lists_blocks(docs_qconn: sqlite3.Connection) -> None:
+    with pytest.raises(ChipsageQueryError) as excinfo:
+        get_errata(docs_qconn, "RP2040", "NONEXISTENT")
+    assert "errata blocks" in str(excinfo.value)
+
+
+def test_get_errata_text_is_verbatim(docs_qconn: sqlite3.Connection) -> None:
+    errata = get_errata(docs_qconn, "RP2040", "Clocks")["errata"]
+    e7 = next(e for e in errata if e["code"] == "RP2040-E7")
+    assert "synchronisation issue" in e7["text"]  # verbatim datasheet wording
