@@ -111,3 +111,35 @@ class Chip:
     svd_source: str | None = None  # provenance: the SVD filename it was parsed from
     width: int = 32  # default register width in bits
     peripherals: tuple[Peripheral, ...] = ()
+
+
+# --- Tier-3 documentation (prose / errata) ------------------------------------------------
+#
+# These types carry text extracted verbatim from a vendored datasheet PDF, page-anchored for
+# citation. Only :mod:`chipsage.pdf` imports PyMuPDF and produces them — the rest of the code
+# speaks this model, exactly as it does for the SVD-derived Tier-1 types above.
+
+
+@dataclass(frozen=True)
+class PageText:
+    """The verbatim text of one datasheet page, anchored to its page number."""
+
+    pdf_page: int  # 1-based physical page index in the PDF
+    label: str  # the datasheet's own printed page label (used in citations)
+    text: str  # verbatim extracted page text
+
+
+@dataclass(frozen=True)
+class Erratum:
+    """One erratum extracted verbatim from a datasheet's errata appendix.
+
+    ``peripheral`` is the datasheet's own hardware-block heading the erratum is listed under
+    (e.g. "Clocks", "USB") — the grouping that lets a peripheral query surface its errata.
+    """
+
+    code: str  # e.g. "RP2040-E7"
+    peripheral: str | None  # the block heading this erratum is grouped under
+    title: str | None  # the erratum's Summary line
+    label: str  # printed page label where the erratum is documented
+    pdf_page: int  # 1-based physical page index
+    text: str  # verbatim body (Summary / Description / Workaround / Affects / …)
