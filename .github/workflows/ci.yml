@@ -29,5 +29,9 @@ jobs:
       - name: Test (pytest)
         run: pytest
 
-      - name: Build index from vendored SVDs (smoke)
-        run: chipsage-build --svd data/svd/RP2040.svd data/svd/RP2350.svd -o chipsage.db --strict
+      - name: Build index from vendored SVDs + datasheets (smoke)
+        run: >-
+          chipsage-build
+          --svd data/svd/RP2040.svd data/svd/RP2350.svd
+          --pdf data/pdf/rp2040-datasheet.pdf data/pdf/rp2350-datasheet.pdf
+          -o chipsage.db --strict
