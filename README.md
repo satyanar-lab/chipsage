@@ -101,6 +101,10 @@ citation-backed tools. Every response carries a source reference — Tier-1 tool
 `provenance` block + `citation` (vendor · chip · SVD version · source file); Tier-3 tools a
 page citation (`RP2040 Datasheet · p.545`). Nothing is paraphrased or inferred.
 
+> Cited page numbers are the datasheet's **printed page labels** (matching its own
+> cross-references and table of contents) — which may differ from a PDF viewer's physical
+> page position by the length of the front matter.
+
 **Tier 1 — registers (SVD-backed):**
 
 | Tool | What it does |
