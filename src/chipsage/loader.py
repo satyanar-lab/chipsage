@@ -19,7 +19,7 @@ from .db import connect
 from .models import Chip
 from .schema import create_schema
 from .svd import parse_svd
-from .validation import Violation, validate_field, validate_register
+from .validation import Violation, validate_enum, validate_field, validate_register
 
 logger = logging.getLogger("chipsage.loader")
 
@@ -35,6 +35,8 @@ class LoadReport:
     registers_rejected: int = 0
     fields_inserted: int = 0
     fields_rejected: int = 0
+    enums_inserted: int = 0
+    enums_rejected: int = 0
     violations: list[Violation] = dataclass_field(default_factory=list)
 
     @property
@@ -123,6 +125,23 @@ def insert_chip(conn: sqlite3.Connection, chip: Chip) -> LoadReport:
                     ),
                 )
                 report.fields_inserted += 1
+                field_id = cur.lastrowid
+
+                for enum in fld.enumerated_values:
+                    enum_violations = validate_enum(enum, fld, peripheral, register)
+                    if enum_violations:
+                        report.enums_rejected += 1
+                        for violation in enum_violations:
+                            report.violations.append(violation)
+                            logger.warning("rejected enum %s", violation)
+                        continue
+                    cur.execute(
+                        "INSERT INTO enums (field_id, name, value, description, is_default) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (field_id, enum.name, enum.value, enum.description,
+                         1 if enum.is_default else 0),
+                    )
+                    report.enums_inserted += 1
 
     conn.commit()
     return report

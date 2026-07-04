@@ -19,10 +19,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import Field, Peripheral, Register
+from .models import EnumeratedValue, Field, Peripheral, Register
 
 SCOPE_REGISTER = "register"
 SCOPE_FIELD = "field"
+SCOPE_ENUM = "enum"
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,28 @@ def validate_field(field: Field, register: Register, peripheral: Peripheral) -> 
             f"reset value {field.reset_value:#x} does not fit in {field.bit_width} bit(s)",
         )
     return problems
+
+
+def validate_enum(
+    enum: EnumeratedValue, field: Field, peripheral: Peripheral, register: Register
+) -> list[Violation]:
+    """Validate one enumerated value against its field. Returns enum-scope violations.
+
+    A named value must fit the field width; a catch-all default (``value is None``) is exempt.
+    """
+    if enum.value is not None and not reset_value_fits(enum.value, field.bit_width):
+        return [
+            Violation(
+                "enum_out_of_range",
+                SCOPE_ENUM,
+                peripheral.name,
+                register.name,
+                f"enumerated value {enum.name!r}={enum.value:#x} does not fit the "
+                f"{field.bit_width}-bit field",
+                field.name,
+            )
+        ]
+    return []
 
 
 def validate_register(register: Register, peripheral: Peripheral) -> list[Violation]:

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from cmsis_svd import SVDParser
 
-from .models import AddressBlock, Chip, Field, Peripheral, Register
+from .models import AddressBlock, Chip, EnumeratedValue, Field, Peripheral, Register
 
 
 def _access_str(access: object) -> str | None:
@@ -34,6 +34,32 @@ def _field_reset(register_reset: int | None, bit_offset: int, bit_width: int) ->
     return (register_reset >> bit_offset) & ((1 << bit_width) - 1)
 
 
+def _build_enums(svd_field: object) -> tuple[EnumeratedValue, ...]:
+    """Flatten a field's SVD enumeratedValues container(s) into domain EnumeratedValues.
+
+    A field carries a list of ``SVDEnumeratedValues`` containers (a read/write split yields
+    more than one), each holding the individual ``SVDEnumeratedValue`` entries. We flatten
+    across containers and drop duplicate names (first wins) so the DB's UNIQUE(field, name)
+    holds. Nothing is invented — names/values/descriptions come straight from the SVD.
+    """
+    out: list[EnumeratedValue] = []
+    seen: set[str] = set()
+    for container in (svd_field.enumerated_values or ()):
+        for ev in (container.enumerated_values or ()):
+            if ev.name in seen:
+                continue
+            seen.add(ev.name)
+            out.append(
+                EnumeratedValue(
+                    name=ev.name,
+                    value=ev.value,
+                    description=_clean(ev.description),
+                    is_default=bool(getattr(ev, "is_default", False)),
+                )
+            )
+    return tuple(out)
+
+
 def _build_field(svd_field: object, register_reset: int | None) -> Field:
     bit_offset = svd_field.bit_offset
     bit_width = svd_field.bit_width
@@ -44,6 +70,7 @@ def _build_field(svd_field: object, register_reset: int | None) -> Field:
         description=_clean(svd_field.description),
         access=_access_str(svd_field.access),
         reset_value=_field_reset(register_reset, bit_offset, bit_width),
+        enumerated_values=_build_enums(svd_field),
     )
 
 

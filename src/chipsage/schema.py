@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 CREATE TABLE meta (
@@ -63,11 +63,23 @@ CREATE TABLE fields (
     UNIQUE (register_id, name)
 );
 
+CREATE TABLE enums (
+    id          INTEGER PRIMARY KEY,
+    field_id    INTEGER NOT NULL REFERENCES fields(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    value       INTEGER,
+    description TEXT,
+    is_default  INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (field_id, name)
+);
+
 CREATE INDEX idx_peripherals_chip ON peripherals(chip_id);
 CREATE INDEX idx_peripherals_name ON peripherals(name);
 CREATE INDEX idx_registers_peripheral ON registers(peripheral_id);
 CREATE INDEX idx_registers_name ON registers(name);
 CREATE INDEX idx_fields_register ON fields(register_id);
+CREATE INDEX idx_enums_field ON enums(field_id);
+CREATE INDEX idx_enums_field_value ON enums(field_id, value);
 """
 
 

@@ -24,6 +24,20 @@ class AddressBlock:
 
 
 @dataclass(frozen=True)
+class EnumeratedValue:
+    """A symbolic name for one value of a field, from the SVD's enumeratedValues.
+
+    ``value`` is ``None`` only for a catch-all "default" entry (``is_default``), which names
+    every value not otherwise listed.
+    """
+
+    name: str
+    value: int | None
+    description: str | None = None
+    is_default: bool = False
+
+
+@dataclass(frozen=True)
 class Field:
     """A named bit-slice within a register."""
 
@@ -33,6 +47,7 @@ class Field:
     description: str | None = None
     access: str | None = None  # SVD access string, e.g. "read-write"
     reset_value: int | None = None  # the field's slice of the register reset value
+    enumerated_values: tuple[EnumeratedValue, ...] = ()  # symbolic value names, if any
 
     @property
     def msb(self) -> int:

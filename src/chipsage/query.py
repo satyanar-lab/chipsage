@@ -162,6 +162,25 @@ def _field_specs(conn: sqlite3.Connection, register_id: int) -> list[FieldSpec]:
     ]
 
 
+def _field_enum_rows(conn: sqlite3.Connection, field_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT name, value, description, is_default FROM enums WHERE field_id = ? "
+        "ORDER BY (value IS NULL), value",
+        (field_id,),
+    ).fetchall()
+
+
+def _enum_name_for(rows: list[sqlite3.Row], value: int) -> str | None:
+    """Resolve a numeric field value to its symbolic name (a default entry is the fallback)."""
+    default = None
+    for r in rows:
+        if r["is_default"]:
+            default = r["name"]
+        elif r["value"] == value:
+            return r["name"]
+    return default
+
+
 def _register_info(prow: sqlite3.Row, rrow: sqlite3.Row) -> dict:
     size = rrow["size"]
     address = prow["base_address"] + rrow["address_offset"]
@@ -186,7 +205,7 @@ def lookup_register(conn: sqlite3.Connection, chip: str, peripheral: str, regist
     chip_row = resolve_chip_row(conn, chip)
     prow, rrow = resolve_register_by_name(conn, chip_row, peripheral, register)
     rows = conn.execute(
-        "SELECT name, description, bit_offset, bit_width, access, reset_value "
+        "SELECT id, name, description, bit_offset, bit_width, access, reset_value "
         "FROM fields WHERE register_id = ? ORDER BY bit_offset DESC",
         (rrow["id"],),
     ).fetchall()
@@ -199,6 +218,10 @@ def lookup_register(conn: sqlite3.Connection, chip: str, peripheral: str, regist
             "access": r["access"],
             "reset_value": _hex(r["reset_value"], r["bit_width"]),
             "description": r["description"],
+            "enumerated_values": [
+                {"value": e["value"], "name": e["name"], "description": e["description"]}
+                for e in _field_enum_rows(conn, r["id"])
+            ],
         }
         for r in rows
     ]
@@ -235,7 +258,15 @@ def decode_dump(
     chip_row = resolve_chip_row(conn, chip)
     prow, rrow = _resolve(conn, chip_row, peripheral, register, address)
     size = rrow["size"]
-    specs = _field_specs(conn, rrow["id"])
+    field_rows = conn.execute(
+        "SELECT id, name, bit_offset, bit_width, access FROM fields WHERE register_id = ? "
+        "ORDER BY bit_offset",
+        (rrow["id"],),
+    ).fetchall()
+    specs = [
+        FieldSpec(r["name"], r["bit_offset"], r["bit_width"], r["access"]) for r in field_rows
+    ]
+    enum_field_id = {r["name"]: r["id"] for r in field_rows}
     masked = value & size_mask(size)
     decoded = decode_fields(masked, specs)
 
@@ -255,6 +286,7 @@ def decode_dump(
             "bits": _bits_label(fv.bit_offset, fv.bit_width),
             "value": _hex(fv.value, fv.bit_width),
             "value_int": fv.value,
+            "enum": _enum_name_for(_field_enum_rows(conn, enum_field_id[fv.name]), fv.value),
             "access": fv.access,
         }
         for fv in decoded
